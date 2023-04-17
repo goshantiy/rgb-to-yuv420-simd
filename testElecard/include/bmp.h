@@ -2,8 +2,9 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <thread>
 #define simd
-#define outputs
+//#define outputs
 
 #ifdef outputs
 #include <iostream>
@@ -24,7 +25,7 @@ public:
 		uint8_t g;
 		uint8_t r;
 	};
-	struct YUV
+	struct YUV444
 	{
 		float y;
 		float u;
@@ -32,12 +33,15 @@ public:
 	};
 
 	bool readBmp(std::string);
-	YUV RGBtoYUV444(RGB);
-	RGB YUVtoRGB(YUV);
+	YUV444 RGBtoYUV444(RGB);
+	RGB YUVtoRGB(YUV444);
 	void ConvertRGBtoYUV444();
 #ifdef simd
-	bool simdReadBmp(std::string);
+	bool soaReadBmp(std::string);
 	void simdConvertRGBtoYUV444();
+	void simdThreadsRGBtoYUV444();
+	void soaConvertRGBtoYUV444();
+	void soaConvertRGBtoYUV444(int pos, int size);
 #endif //simd
 private:
 	struct	BITMAPFILEHEADER {
@@ -60,7 +64,7 @@ private:
 		uint32_t biClrUsed;
 		uint32_t biClrImportant;
 	};
-	std::vector<YUV> _yuv_colors;
+	std::vector<YUV444> _yuv_colors;
 	std::vector<RGB> _rgb_colors;
 	BITMAPFILEHEADER _file_header;
 	BITMAPINFOHEADER _info_header;
@@ -73,12 +77,12 @@ private:
 		std::vector<uint8_t> r;
 	};
 	SoA_RGB _soa_rgb_colors;
-	struct SoA_YUV {
+	struct SoA_YUV444 {
 		std::vector<float> y;
 		std::vector<float> u;
 		std::vector<float> v;
 	};
-	SoA_YUV _soa_yuv_colors;
+	SoA_YUV444 _soa_yuv_colors;
 #endif //simd
 
 };
