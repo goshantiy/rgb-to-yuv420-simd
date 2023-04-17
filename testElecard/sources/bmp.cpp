@@ -76,6 +76,7 @@ bool RGBConvert::simdReadBmp(std::string path)
 }
 void RGBConvert::simdConvertRGBtoYUV444()
 {
+	//YUV constants
 	const __m256 factor_y = _mm256_set1_ps(0.2126f);
 	const __m256 factor_u = _mm256_set1_ps(-0.1146f);
 	const __m256 factor_v = _mm256_set1_ps(0.5f);
@@ -90,12 +91,13 @@ void RGBConvert::simdConvertRGBtoYUV444()
 
 	const __m256 offset_128 = _mm256_set1_ps(128.f);
 
-	const size_t size = _soa_rgb_colors.r.size();
+	size_t size = _soa_rgb_colors.r.size();
 	_soa_yuv_colors.y.resize(size);
 	_soa_yuv_colors.u.resize(size);
 	_soa_yuv_colors.v.resize(size);
-
-	for (size_t i = 0; i < size; i += 8) {
+	int off_elements = size % 8;
+	size -= off_elements;
+	for (size_t i = 0; i < size&& size >= 8; i += 8) {
 		const __m256 r = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(
 			_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&_soa_rgb_colors.r[i]))));
 		const __m256 g = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(
@@ -117,6 +119,15 @@ void RGBConvert::simdConvertRGBtoYUV444()
 		_mm256_storeu_ps(&_soa_yuv_colors.y[i], y);
 		_mm256_storeu_ps(&_soa_yuv_colors.u[i], u);
 		_mm256_storeu_ps(&_soa_yuv_colors.v[i], v);
+	}
+	for (int i = size; i < size+off_elements; i++)
+	{
+		_soa_yuv_colors.y[i] = 0.2126 * _soa_rgb_colors.r[i] + 0.7152 * _soa_rgb_colors.g[i] 
+			+ 0.0722 * _soa_rgb_colors.b[i];
+		_soa_yuv_colors.u[i] = (-0.1146 * _soa_rgb_colors.r[i] - 0.3854 * _soa_rgb_colors.g[i]
+			+ 0.5 * _soa_rgb_colors.b[i]) + 128;
+		_soa_yuv_colors.v[i] = (0.5 * _soa_rgb_colors.r[i] - 0.4542 * _soa_rgb_colors.g[i]
+			- 0.0458 * _soa_rgb_colors.b[i]) + 128;
 	}
 }
 #endif //simd
