@@ -314,8 +314,8 @@ void RGBConvert::simdConvertRGBtoYUV420()
 				_mm256_add_ps(_mm256_mul_ps(factor_u, r2), _mm256_mul_ps(factor_u2, g2)),
 				_mm256_add_ps(_mm256_mul_ps(factor_u3, b2), offset_128));
 
-			__m256 res1 = _mm256_div_ps(_mm256_add_ps(u1, u2), _mm256_set1_ps(4.f));
-			__m256 result1 = _mm256_hadd_ps(res1, res1);
+			__m256 div1 = _mm256_div_ps(_mm256_add_ps(u1, u2), _mm256_set1_ps(4.f));
+			__m256 result1 = _mm256_hadd_ps(div1, div1);
 
 			const __m256 v1 = _mm256_add_ps(
 				_mm256_add_ps(_mm256_mul_ps(factor_v, r1), _mm256_mul_ps(factor_v2, g1)),
@@ -324,11 +324,14 @@ void RGBConvert::simdConvertRGBtoYUV420()
 				_mm256_add_ps(_mm256_mul_ps(factor_v, r2), _mm256_mul_ps(factor_v2, g2)),
 				_mm256_add_ps(_mm256_mul_ps(factor_v3, b2), offset_128));
 
-			__m256 res2 = _mm256_div_ps(_mm256_add_ps(v1, v2), _mm256_set1_ps(4.f));
-			__m256 result2 = _mm256_hadd_ps(res2, res2);
+			__m256 div2 = _mm256_div_ps(_mm256_add_ps(v1, v2), _mm256_set1_ps(4.f));
+			__m256 result2 = _mm256_hadd_ps(div2, div2);
+
+
 
 			__m256 mask = _mm256_set_epi32(0, -1, 0, -1, 0, -1, 0, -1);
 
+			//extract from m256 even index values and store in m128
 			__m256 even_result1 = _mm256_and_ps(result1, mask);
 			__m128 low1 = _mm256_extractf128_ps(even_result1, 0);
 			__m128 high1 = _mm256_extractf128_ps(even_result1, 1);
@@ -342,7 +345,9 @@ void RGBConvert::simdConvertRGBtoYUV420()
 			__m128 permuted_low2 = _mm_permute_ps(low2, _MM_SHUFFLE(2, 0, 3, 1));
 			__m128 permuted_high2 = _mm_permute_ps(high2, _MM_SHUFFLE(3, 1, 2, 0));
 			__m128 sum2 = _mm_add_ps(permuted_low2, permuted_high2);
-			int index_uv = (y * width) / 16 + x / 2;
+			int index_uv = (y * width) / 4 + x / 2;
+
+
 			_mm_storeu_ps(&_yuv420_colors.u[index_uv], sum1);
 			_mm_storeu_ps(&_yuv420_colors.v[index_uv], sum2);
 		}
