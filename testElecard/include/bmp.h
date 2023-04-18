@@ -12,10 +12,7 @@
 
 #ifdef simd
 #include <immintrin.h>
-#include <emmintrin.h>
-#include <xmmintrin.h>
 #endif //simd
-
 class RGBConvert
 {
 public:
@@ -31,19 +28,30 @@ public:
 		float u;
 		float v;
 	};
-
+	struct SoA_YUV420
+	{
+		std::vector<float> y;
+		std::vector<float> u;
+		std::vector<float> v;
+	};
 	bool readBmp(std::string);
 	YUV444 RGBtoYUV444(RGB);
 	RGB YUVtoRGB(YUV444);
 	void ConvertRGBtoYUV444();
+	void ConvertRGBtoYUV420();
+
+
+
 #ifdef simd
 	bool soaReadBmp(std::string);
 	void simdConvertRGBtoYUV444();
 	void simdThreadsRGBtoYUV444();
+	void simdConvertRGBtoYUV420();
 	void soaConvertRGBtoYUV444();
 	void soaConvertRGBtoYUV444(int pos, int size);
 #endif //simd
 private:
+
 	struct	BITMAPFILEHEADER {
 		uint16_t bfType;
 		uint32_t bfSize;
@@ -64,10 +72,15 @@ private:
 		uint32_t biClrUsed;
 		uint32_t biClrImportant;
 	};
-	std::vector<YUV444> _yuv_colors;
+
+	SoA_YUV420 _yuv420_colors;
+	std::vector<YUV444> _yuv444_colors;
 	std::vector<RGB> _rgb_colors;
 	BITMAPFILEHEADER _file_header;
 	BITMAPINFOHEADER _info_header;
+
+
+
 
 #ifdef simd
 	struct SoA_RGB
