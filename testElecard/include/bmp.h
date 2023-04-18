@@ -39,15 +39,14 @@ public:
 	RGB YUVtoRGB(YUV444);
 	void ConvertRGBtoYUV444();
 	void ConvertRGBtoYUV420();
-
-
+	bool writeYUV420ToFile();
+	bool writeYUV444ToFile();
 
 #ifdef simd
 	bool soaReadBmp(std::string);
 	void simdConvertRGBtoYUV444();
 	void simdThreadsRGBtoYUV444();
 	void simdConvertRGBtoYUV420();
-	void soaConvertRGBtoYUV444();
 	void soaConvertRGBtoYUV444(int pos, int size);
 #endif //simd
 private:
@@ -79,9 +78,6 @@ private:
 	BITMAPFILEHEADER _file_header;
 	BITMAPINFOHEADER _info_header;
 
-
-
-
 #ifdef simd
 	struct SoA_RGB
 	{
@@ -91,9 +87,9 @@ private:
 	};
 	SoA_RGB _soa_rgb_colors;
 	struct SoA_YUV444 {
-		std::vector<float> y;
-		std::vector<float> u;
-		std::vector<float> v;
+		std::vector<uint8_t> y;
+		std::vector<uint8_t> u;
+		std::vector<uint8_t> v;
 	};
 	SoA_YUV444 _soa_yuv_colors;
 #endif //simd

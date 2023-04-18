@@ -56,11 +56,12 @@ void RGBConvert::ConvertRGBtoYUV420()
 	_yuv420_colors.v.resize(size / 4);
 	int height = _info_header.biHeight - _info_header.biHeight%4;
 	int width = _info_header.biWidth - _info_header.biWidth%4;
-	for (int y = 0; y < height; ++y)
-		for (int x = 0;x < width; ++x) {
+	for (int y = 0; y < height; ++y) {
+		for (int x = 0; x < width; ++x) {
 			_yuv420_colors.y[y * width + x] = 0.2126 * _rgb_colors[y * width + x].r +
 				0.7152 * _rgb_colors[y * width + x].g + 0.0722 * _rgb_colors[y * width + x].b;
 		}
+	}
 
 		for (int y = 0; y < height; y+=2)
 			for (int x = 0; x < width; x+=2) {
@@ -78,12 +79,15 @@ void RGBConvert::ConvertRGBtoYUV420()
 				   ((0.5 * rgb0.r - 0.4542 * rgb0.g - 0.0458 * rgb0.b) +
 					(0.5 * rgb1.r - 0.4542 * rgb1.g - 0.0458 * rgb1.b) +
 					(0.5 * rgb2.r - 0.4542 * rgb2.g - 0.0458 * rgb2.b) +
-					(0.5 * rgb3.r - 0.4542 * rgb3.g - 0.0458 * rgb3.b)) / 4 + 128;
+					(0.5 * rgb3.r - 0.4542 * rgb3.g - 0.0458 * rgb3.b)) / 4  + 128;
 			}
 }
 #ifdef simd
 void RGBConvert::soaConvertRGBtoYUV444(int pos, int size)
 {
+	_soa_yuv_colors.y.resize(_soa_rgb_colors.r.size());
+	_soa_yuv_colors.u.resize(_soa_rgb_colors.r.size());
+	_soa_yuv_colors.v.resize(_soa_rgb_colors.r.size());
 	for (int i = pos; i < size; ++i)
 	{
 		_soa_yuv_colors.y[i] = 0.2126 * _soa_rgb_colors.r[i] + 0.7152 * _soa_rgb_colors.g[i]
@@ -121,122 +125,156 @@ bool RGBConvert::soaReadBmp(std::string path)
 	}
 	return result;
 }
-void RGBConvert::simdThreadsRGBtoYUV444()
-{
-
-	size_t size = _soa_rgb_colors.r.size();
-	_soa_yuv_colors.y.resize(size);
-	_soa_yuv_colors.u.resize(size);
-	_soa_yuv_colors.v.resize(size);
-	if (size < 8)//no reason for simd and threads
-	{
-		soaConvertRGBtoYUV444(0,size);
-		return;
-	}
-	size_t num_threads = std::thread::hardware_concurrency()/2;
-	size_t thread_chunk_num = size / 8;// nums of chunks of 8 elements
-	if (thread_chunk_num < num_threads)// no reason for creating threads if chunks num is too small
-	{
-		simdConvertRGBtoYUV444();
-		return;
-	}
-	size_t chunks_for_thread = thread_chunk_num / num_threads;
-	//YUV constants
-	const __m256 factor_y = _mm256_set1_ps(0.2126f);
-	const __m256 factor_u = _mm256_set1_ps(-0.1146f);
-	const __m256 factor_v = _mm256_set1_ps(0.5f);
-
-	const __m256 factor_y2 = _mm256_set1_ps(0.7152f);
-	const __m256 factor_u2 = _mm256_set1_ps(-0.3854f);
-	const __m256 factor_v2 = _mm256_set1_ps(-0.4542f);
-
-	const __m256 factor_y3 = _mm256_set1_ps(0.0722f);
-	const __m256 factor_u3 = _mm256_set1_ps(0.5f);
-	const __m256 factor_v3 = _mm256_set1_ps(-0.0458f);
-	const __m256 offset_128 = _mm256_set1_ps(128.f);
-	std::vector<std::thread> threads(num_threads);
-	for (int i = 0; i < num_threads; i++)
-	{
-		threads[i] = std::thread([&] {
-			for (int j = i * thread_chunk_num; j < (i* chunks_for_thread); j += 8) {
-				const __m256 r = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(
-					_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&_soa_rgb_colors.r[i]))));
-				const __m256 g = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(
-					_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&_soa_rgb_colors.g[i]))));
-				const __m256 b = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(
-					_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&_soa_rgb_colors.b[i]))));
-				//0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
-				const __m256 y = _mm256_fmadd_ps(factor_y, r,
-					_mm256_fmadd_ps(factor_y2, g, _mm256_mul_ps(factor_y3, b)));
-				//(-0.1146 * rgb.r - 0.3854 * rgb.g + 0.5 * rgb.b) + 128;
-				const __m256 u = _mm256_add_ps(
-					_mm256_add_ps(_mm256_mul_ps(factor_u, r), _mm256_mul_ps(factor_u2, g)),
-					_mm256_add_ps(_mm256_mul_ps(factor_u3, b), offset_128));
-				//(0.5 * rgb.r - 0.4542 * rgb.g - 0.0458 * rgb.b) + 128
-				const __m256 v = _mm256_add_ps(
-					_mm256_add_ps(_mm256_mul_ps(factor_v, r), _mm256_mul_ps(factor_v2, g)),
-					_mm256_add_ps(_mm256_mul_ps(factor_v3, b), offset_128));
-				_mm256_storeu_ps(&_soa_yuv_colors.y[i], y);
-				_mm256_storeu_ps(&_soa_yuv_colors.u[i], u);
-				_mm256_storeu_ps(&_soa_yuv_colors.v[i], v);
-			}//for
-			}//lambda
-		);//thread	
-	}
-	int off_elements = size % 8;
-	soaConvertRGBtoYUV444(size - off_elements, size);
-	for (int i = 0; i < num_threads; i++)
-	{
-		threads[i].join();
-	}
-}
+//void RGBConvert::simdThreadsRGBtoYUV444()
+//{
+//
+//	size_t size = _soa_rgb_colors.r.size();
+//	_soa_yuv_colors.y.resize(size);
+//	_soa_yuv_colors.u.resize(size);
+//	_soa_yuv_colors.v.resize(size);
+//	if (size < 8)//no reason for simd and threads
+//	{
+//		soaConvertRGBtoYUV444(0,size);
+//		return;
+//	}
+//	size_t num_threads = std::thread::hardware_concurrency()/2;
+//	size_t thread_chunk_num = size / 8;// nums of chunks of 8 elements
+//	if (thread_chunk_num < num_threads)// no reason for creating threads if chunks num is too small
+//	{
+//		simdConvertRGBtoYUV444();
+//		return;
+//	}
+//	size_t chunks_for_thread = thread_chunk_num / num_threads;
+//	//YUV constants
+//	const __m256 factor_y = _mm256_set1_ps(0.2126f);
+//	const __m256 factor_u = _mm256_set1_ps(-0.1146f);
+//	const __m256 factor_v = _mm256_set1_ps(0.5f);
+//
+//	const __m256 factor_y2 = _mm256_set1_ps(0.7152f);
+//	const __m256 factor_u2 = _mm256_set1_ps(-0.3854f);
+//	const __m256 factor_v2 = _mm256_set1_ps(-0.4542f);
+//
+//	const __m256 factor_y3 = _mm256_set1_ps(0.0722f);
+//	const __m256 factor_u3 = _mm256_set1_ps(0.5f);
+//	const __m256 factor_v3 = _mm256_set1_ps(-0.0458f);
+//	const __m256 offset_128 = _mm256_set1_ps(128.f);
+//	std::vector<std::thread> threads(num_threads);
+//	for (int i = 0; i < num_threads; i++)
+//	{
+//		threads[i] = std::thread([&] {
+//			for (int j = i * thread_chunk_num; j < (i* chunks_for_thread); j += 8) {
+//				const __m256 r = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(
+//					_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&_soa_rgb_colors.r[i]))));
+//				const __m256 g = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(
+//					_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&_soa_rgb_colors.g[i]))));
+//				const __m256 b = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(
+//					_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&_soa_rgb_colors.b[i]))));
+//				//0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
+//				const __m256 y = _mm256_fmadd_ps(factor_y, r,
+//					_mm256_fmadd_ps(factor_y2, g, _mm256_mul_ps(factor_y3, b)));
+//				//(-0.1146 * rgb.r - 0.3854 * rgb.g + 0.5 * rgb.b) + 128;
+//				const __m256 u = _mm256_add_ps(
+//					_mm256_add_ps(_mm256_mul_ps(factor_u, r), _mm256_mul_ps(factor_u2, g)),
+//					_mm256_add_ps(_mm256_mul_ps(factor_u3, b), offset_128));
+//				//(0.5 * rgb.r - 0.4542 * rgb.g - 0.0458 * rgb.b) + 128
+//				const __m256 v = _mm256_add_ps(
+//					_mm256_add_ps(_mm256_mul_ps(factor_v, r), _mm256_mul_ps(factor_v2, g)),
+//					_mm256_add_ps(_mm256_mul_ps(factor_v3, b), offset_128));
+//				_mm256_storeu_ps(&_soa_yuv_colors.y[i], y);
+//				_mm256_storeu_ps(&_soa_yuv_colors.u[i], u);
+//				_mm256_storeu_ps(&_soa_yuv_colors.v[i], v);
+//			}//for
+//			}//lambda
+//		);//thread	
+//	}
+//	int off_elements = size % 8;
+//	soaConvertRGBtoYUV444(size - off_elements, size);
+//	for (int i = 0; i < num_threads; i++)
+//	{
+//		threads[i].join();
+//	}
+//}
 void RGBConvert::simdConvertRGBtoYUV444()
 {
-	//YUV constants
-	const __m256 factor_y = _mm256_set1_ps(0.2126f);
-	const __m256 factor_u = _mm256_set1_ps(-0.1146f);
-	const __m256 factor_v = _mm256_set1_ps(0.5f);
+	const __m256i factor_y = _mm256_set1_epi16(6969);
+	const __m256i factor_u = _mm256_set1_epi16(-3655);
+	const __m256i factor_v = _mm256_set1_epi16(12883);
 
-	const __m256 factor_y2 = _mm256_set1_ps(0.7152f);
-	const __m256 factor_u2 = _mm256_set1_ps(-0.3854f);
-	const __m256 factor_v2 = _mm256_set1_ps(-0.4542f);
+	const __m256i factor_y2 = _mm256_set1_epi16(23434);
+	const __m256i factor_u2 = _mm256_set1_epi16(-12539);
+	const __m256i factor_v2 = _mm256_set1_epi16(-14846);
 
-	const __m256 factor_y3 = _mm256_set1_ps(0.0722f);
-	const __m256 factor_u3 = _mm256_set1_ps(0.5f);
-	const __m256 factor_v3 = _mm256_set1_ps(-0.0458f);
+	const __m256i factor_y3 = _mm256_set1_epi16(2365);
+	const __m256i factor_u3 = _mm256_set1_epi16(12883);
+	const __m256i factor_v3 = _mm256_set1_epi16(-1233);
 
-	const __m256 offset_128 = _mm256_set1_ps(128.f);
+	const __m256i offset_128 = _mm256_set1_epi8(128);
 
 	size_t size = _soa_rgb_colors.r.size();
 	_soa_yuv_colors.y.resize(size);
 	_soa_yuv_colors.u.resize(size);
 	_soa_yuv_colors.v.resize(size);
-	int off_elements = size % 8;
-	for (size_t i = 0; i < size&& size >= 8; i += 8) {
-		const __m256 r = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(
-			_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&_soa_rgb_colors.r[i]))));
-		const __m256 g = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(
-			_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&_soa_rgb_colors.g[i]))));
-		const __m256 b = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(
-			_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&_soa_rgb_colors.b[i]))));
-		//0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b;
-		const __m256 y = _mm256_fmadd_ps(factor_y, r,
-			_mm256_fmadd_ps(factor_y2, g, _mm256_mul_ps(factor_y3, b)));
-		//(-0.1146 * rgb.r - 0.3854 * rgb.g + 0.5 * rgb.b) + 128;
-		const __m256 u = _mm256_add_ps(
-			_mm256_add_ps(_mm256_mul_ps(factor_u, r), _mm256_mul_ps(factor_u2, g)),
-			_mm256_add_ps(_mm256_mul_ps(factor_u3, b), offset_128));
-		//(0.5 * rgb.r - 0.4542 * rgb.g - 0.0458 * rgb.b) + 128
-		const __m256 v = _mm256_add_ps(
-			_mm256_add_ps(_mm256_mul_ps(factor_v, r), _mm256_mul_ps(factor_v2, g)),
-			_mm256_add_ps(_mm256_mul_ps(factor_v3, b),offset_128));
 
-		_mm256_storeu_ps(&_soa_yuv_colors.y[i], y);
-		_mm256_storeu_ps(&_soa_yuv_colors.u[i], u);
-		_mm256_storeu_ps(&_soa_yuv_colors.v[i], v);
+	for (size_t i = 0; i < size; i += 32) {
+		const __m256i r = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&_soa_rgb_colors.r[i]));
+		const __m256i g = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&_soa_rgb_colors.g[i]));
+		const __m256i b = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&_soa_rgb_colors.b[i]));
+
+		// Calculate Y, U, V components
+		__m256i y = _mm256_add_epi16(_mm256_mullo_epi16(factor_y, r), _mm256_add_epi16(_mm256_mullo_epi16(factor_y2, g), _mm256_mullo_epi16(factor_y3, b)));
+		__m256i u = _mm256_add_epi16(offset_128, _mm256_add_epi16(_mm256_mullo_epi16(factor_u, r), _mm256_add_epi16(_mm256_mullo_epi16(factor_u2, g), _mm256_mullo_epi16(factor_u3, b))));
+		__m256i v = _mm256_add_epi16(offset_128, _mm256_add_epi16(_mm256_mullo_epi16(factor_v, r), _mm256_add_epi16(_mm256_mullo_epi16(factor_v2, g), _mm256_mullo_epi16(factor_v3, b))));
+
+		// Pack the 16-bit values into 8-bit values
+		y = _mm256_packus_epi16(y, y);
+		u = _mm256_packus_epi16(u, u);
+		v = _mm256_packus_epi16(v, v);
+		// Store the packed values in memory
+		_mm256_storeu_si256(reinterpret_cast<__m256i*>(&_soa_yuv_colors.y[i]), y);
+		_mm256_storeu_si256(reinterpret_cast<__m256i*>(&_soa_yuv_colors.u[i]), u);
+		_mm256_storeu_si256(reinterpret_cast<__m256i*>(&_soa_yuv_colors.v[i]), v);
 	}
 
-	soaConvertRGBtoYUV444(size - off_elements, size);
+	//soaConvertRGBtoYUV444(size - off_elements, size);
+}
+bool RGBConvert::writeYUV420ToFile() {
+	std::ofstream file("output.yuv", std::ios::out | std::ios::binary); // Открытие файла для записи в бинарном режиме
+	bool result = false;
+	if (file.is_open()) {
+		for (auto it : _yuv420_colors.y) {
+			uint8_t y_uint8 = static_cast<uint8_t>(std::round(it * 255.0f));
+			file << y_uint8;
+		}
+		for (auto it : _yuv420_colors.v) {
+			uint8_t v_uint8 = static_cast<int8_t>(std::round(it * 255.0f));
+			file << v_uint8;
+		}
+		for (auto it : _yuv420_colors.u) {
+			uint8_t u_uint8 = static_cast<int8_t>(std::round(it * 255.0f));
+			file << u_uint8;
+		}
+		file.close();
+		result = true;
+	}
+	return result;
+}
+bool RGBConvert::writeYUV444ToFile() {
+	std::ofstream file("output.yuv", std::ios::out | std::ios::binary); // Открытие файла для записи в бинарном режиме
+	bool result = false;
+	if (file.is_open()) {
+		for (auto it : _soa_yuv_colors.y) {
+			file << it;
+		}
+		for (auto it : _soa_yuv_colors.u) {
+			file << it;
+		}
+		for (auto it : _soa_yuv_colors.v) {
+			file << it;
+		}
+		file.close();
+		result = true;
+	}
+	return result;
 }
 
 void RGBConvert::simdConvertRGBtoYUV420()
@@ -284,6 +322,7 @@ void RGBConvert::simdConvertRGBtoYUV420()
 	for (int y = 0; y < height; y += 2) {
 		for (int x = 0; x < width; x += 8) {
 			int index = y * width + x;
+			//load 2x8 rgb colors
 			const __m256 r1 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(
 				_mm_loadl_epi64(reinterpret_cast<const __m128i*>(&_soa_rgb_colors.r[index]))));
 			const __m256 g1 = _mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(
