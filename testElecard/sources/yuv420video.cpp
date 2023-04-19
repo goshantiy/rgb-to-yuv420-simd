@@ -36,15 +36,15 @@ bool YUV420Video::addImage(const SoA_YUV420& img, int width, int height)
 			{
 				for (int j = 0; j < width; j++)
 				{
-					_frame_buffer[frame].y[i * width + j] = img.y[i * width + j];
+					_frame_buffer[frame].y[i * _frame_width + j] = img.y[i * width + j];
 				}
 			}
 			for (int i = 0; i < height / 2; i++)
 			{
 				for (int j = 0; j < width / 2; j++)
 				{
-					_frame_buffer[frame].u[i * width/2 + j] = img.u[i * width/2 + j];
-					_frame_buffer[frame].v[i * width/2 + j] = img.v[i * width/2 + j];
+					_frame_buffer[frame].u[i * _frame_width /2 + j] = img.u[i * width/2 + j];
+					_frame_buffer[frame].v[i * _frame_width /2 + j] = img.v[i * width/2 + j];
 				}
 			}
 		}
