@@ -91,13 +91,25 @@ bool RGBConvert::writeYUV444ToFile()
 
 	if (file.is_open()) {
 		for (auto it : _soa_yuv_colors.y) {
-			file << (uint8_t)std::round(it);
+			if(std::round(it)>255)
+				file << (uint8_t)255;
+			else {
+				file << (uint8_t)std::round(it);
+			}
 		}
 		for (auto it : _soa_yuv_colors.u) {
-			file << (uint8_t)std::round(it);
+			if (std::round(it) > 255)
+				file << (uint8_t)255;
+			else {
+				file << (uint8_t)std::round(it);
+			}
 		}
 		for (auto it : _soa_yuv_colors.v) {
-			file << (uint8_t)std::round(it);
+			if (std::round(it) > 255)
+				file << (uint8_t)255;
+			else {
+				file << (uint8_t)std::round(it);
+			}
 		}
 		file.close();
 		result = true;
@@ -140,19 +152,32 @@ bool RGBConvert::writeYUV420ToFile() {
 
 	if (file.is_open()) {
 		for (auto it : _yuv420_colors.y) {
-			file << (uint8_t)std::round(it);
+			if (std::round(it) > 255)
+				file << (uint8_t)255;
+			else { 
+				file << (uint8_t)std::round(it); 
+			}
 		}
 		for (auto it : _yuv420_colors.u) {
-			file << (uint8_t)std::round(it);
+			if (std::round(it) > 255)
+				file << (uint8_t)255;
+			else {
+				file << (uint8_t)std::round(it);
+			}
 		}
 		for (auto it : _yuv420_colors.v) {
-			file << (uint8_t)std::round(it);
+			if (std::round(it) > 255)
+				file << (uint8_t)255;
+			else {
+				file << (uint8_t)std::round(it);
+			}
 		}
 		file.close();
 		result = true;
 	}
 	return result;
 }
+
 SoA_YUV420 RGBConvert::getImage()
 {
 	return _yuv420_colors;
